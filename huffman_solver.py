@@ -29,7 +29,7 @@ def solve(code_counts, exclusions, max_codes):
     # Avoid solutions requiring more codes than the maximum allowed
     s.add(Sum(f) <= max_codes)
 
-    # We prefer solutions with the mininum number of additional lenghts necessary,
+    # We prefer solutions with the minimum number of additional lengths necessary,
     # so that we can use larger payloads
     s.minimize(Sum(f))
 
