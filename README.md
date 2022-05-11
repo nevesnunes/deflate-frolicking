@@ -7,7 +7,7 @@ For more context, check the accompanying [article](https://nevesnunes.github.io/
 ## Scripts
 
 - `./fix_deflate_w_sitter.py` - Detects decompression error offsets and generates candidate bytes to replace at those offsets, allowing the user to interactively select the best candidate.
-- `./embellish.py` - Adds a dummy block with arbitrary bytes without affecting decompression output. Requires a [forked version of infgen](https://github.com/nevesnunes/infgen)
+- `./embellish.py` - Adds a dummy block with arbitrary bytes without affecting decompression output. Requires a [forked version of infgen](https://github.com/nevesnunes/infgen).
 
 ## Usage
 
