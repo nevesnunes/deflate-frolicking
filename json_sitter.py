@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 
-import ipdb
 import os
 import re
 from collections import deque
@@ -165,16 +164,15 @@ if __name__ == "__main__":
         [b'{"a":"0","b":1,"c":{"id:3,"d":4,"e":5', 27],
         [b'{\n\t"a": "0",\n\t"b": 1,\n\t"c": { "id', 30],
     ]
-    with ipdb.launch_ipdb_on_exception():
-        for sample in samples:
-            print(sample)
-            tree = parser.parse(sample[0])
-            print(tree.root_node.sexp())
-            count_valid_tokens, error_node = bfs(tree, sample[0])
-            error_byte_i = error_node.start_byte if error_node else 0
-            print(count_valid_tokens, error_byte_i)
-            assert error_byte_i == sample[1]
-            print("---")
+    for sample in samples:
+        print(sample)
+        tree = parser.parse(sample[0])
+        print(tree.root_node.sexp())
+        count_valid_tokens, error_node = bfs(tree, sample[0])
+        error_byte_i = error_node.start_byte if error_node else 0
+        print(count_valid_tokens, error_byte_i)
+        assert error_byte_i == sample[1]
+        print("---")
 
     # query = lang.query("""
     # (ERROR) @e
