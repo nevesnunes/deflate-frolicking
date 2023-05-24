@@ -101,10 +101,9 @@ def extract(data, need_bits, next_byte_i, buf):
     return bits, next_byte_i, buf
 
 
-def patch(data, pattern, byte_offset, bit_offset):
-    target_offset = 8 * byte_offset + bit_offset
+def patch(data, pattern, offset):
     for i in range(len(pattern)):
-        data[target_offset + i] = pattern[i]
+        data[offset + i] = pattern[i]
 
     return data
 
