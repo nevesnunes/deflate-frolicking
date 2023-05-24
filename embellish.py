@@ -140,32 +140,32 @@ def patch_codes(
     disasm: Any,
     out_filename: str,
 ) -> Tuple[int, str, Any, Any]:
+    # FIXME: When huffman tables are implemented, we don't need to parse these codes
+    code_bits = {}
+    dist_1_bits = None
+    sym_256_data = None
+    for match in re.finditer(
+        b"! decoded len (\\d+) bits (\\d+) sym_i (\\d+) .* (\\d+)", disasm.stdout
+    ):
+        code_bits[int(match.group(4), 10)] = match.group(2)
+        sym_i = int(match.group(3), 10)
+        if sym_i == candidate_hlit + 257:
+            dist_1_bits = match.group(2)
+        if sym_i == 256:
+            sym_256_data = {
+                "bits": match.group(2),
+                "sym_len": int(match.group(4), 10),
+            }
+    print("  code_bits:", hibold(code_bits))
+    print("  dist_1_bits:", hibold(dist_1_bits))
+    print("  sym_256_data:", hibold(sym_256_data))
+
     missing_codes = re.search(regex_incomplete_err, disasm.stdout)
     if missing_codes:
         print(f"Finding remaining {code_type} codes...")
 
         next_byte_i = int(missing_codes.group(1), 16)
         next_bit_i = int(missing_codes.group(2), 10)
-
-        # FIXME: When huffman tables are implemented, we don't need to parse these codes
-        code_bits = {}
-        dist_1_bits = None
-        sym_256_data = None
-        for match in re.finditer(
-            b"! decoded len (\\d+) bits (\\d+) sym_i (\\d+) .* (\\d+)", disasm.stdout
-        ):
-            code_bits[int(match.group(4), 10)] = match.group(2)
-            sym_i = int(match.group(3), 10)
-            if sym_i == candidate_hlit + 257:
-                dist_1_bits = match.group(2)
-            if sym_i == 256:
-                sym_256_data = {
-                    "bits": match.group(2),
-                    "sym_len": int(match.group(4), 10),
-                }
-        print("  code_bits:", hibold(code_bits))
-        print("  dist_1_bits:", hibold(dist_1_bits))
-        print("  sym_256_data:", hibold(sym_256_data))
 
         exclusions = {}
         litlen_counts = {}
@@ -230,37 +230,38 @@ def patch_codes(
                 offset,
             )
         )
-        new_bytes = bitsturi.bits_to_bytes(new_bits)
-        with open(out_filename, "wb") as f:
-            f.write(new_bytes)
-        # include padded bits for next operations
-        new_bits = "".join(bin(x)[2:].rjust(8, "0") for x in new_bytes)
+    else:
+        print(f"We already have enough {code_type} codes!")
 
-        # always check that litlen codes are valid (we either patched them or something after them)
-        disasm = subprocess.run(
-            ["infgen", "-d", out_filename],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
+    new_bytes = bitsturi.bits_to_bytes(new_bits)
+    with open(out_filename, "wb") as f:
+        f.write(new_bytes)
+    # include padded bits for next operations
+    new_bits = "".join(bin(x)[2:].rjust(8, "0") for x in new_bytes)
+
+    # always check that litlen codes are valid (we either patched them or something after them)
+    disasm = subprocess.run(
+        ["infgen", "-d", out_filename],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    missing_codes = re.search(
+        b"([0-9a-f]+) (\\d+): .* literal/length code is incomplete", disasm.stdout
+    )
+    if missing_codes:
+        raise RuntimeError(
+            "Expected solved litlen codes, but output is still incomplete!"
         )
+    if code_type == "dist":
         missing_codes = re.search(
-            b"([0-9a-f]+) (\\d+): .* literal/length code is incomplete", disasm.stdout
+            b"([0-9a-f]+) (\\d+): ! under-subscribed dist", disasm.stdout
         )
         if missing_codes:
             raise RuntimeError(
-                "Expected solved litlen codes, but output is still incomplete!"
+                "Expected solved dist codes, but output is still incomplete!"
             )
-        if code_type == "dist":
-            missing_codes = re.search(
-                b"([0-9a-f]+) (\\d+): ! under-subscribed dist", disasm.stdout
-            )
-            if missing_codes:
-                raise RuntimeError(
-                    "Expected solved dist codes, but output is still incomplete!"
-                )
 
-        return candidate_vhcode, new_bits, sym_256_data, disasm
-    else:
-        raise RuntimeError("No missing codes (TODO)")
+    return candidate_vhcode, new_bits, sym_256_data, disasm
 
 
 def add_eob_symbol(
