@@ -9,17 +9,38 @@ will not produce any output when decompressed. This duplicate is then
 concatenated to the rest of the stream.
 """
 
-import sys
+import colorama
 import subprocess
+import sys
 import re
 
 import bitsturi
 from huffman_solver import MAXHDIST, MAXHLIT, MAXBITS, solve
 from typing import Any, Tuple
 
+
 HLIT_OFFSET = 0
 HDIST_OFFSET = 8 * 1 + 3
 BFINAL_OFFSET = 7
+
+
+def hibold(text):
+    return colorama.Style.BRIGHT + str(text) + colorama.Style.RESET_ALL
+
+
+def hi1(text):
+    return (
+        colorama.Fore.RED + colorama.Style.BRIGHT + str(text) + colorama.Style.RESET_ALL
+    )
+
+
+def hi2(text):
+    return (
+        colorama.Fore.MAGENTA
+        + colorama.Style.BRIGHT
+        + str(text)
+        + colorama.Style.RESET_ALL
+    )
 
 
 def inject_message(
@@ -27,14 +48,13 @@ def inject_message(
 ) -> Tuple[int, int, str, Any]:
     inject_start_search = re.search(b"([0-9a-f]+) \\d+: ! decoded len ", disasm.stdout)
     inject_start = int(inject_start_search.group(1), 16)
-    print("Initial message start:", hex(inject_start))
     inject_end_search = re.search(b"([0-9a-f]+) \\d+: ! literal ", disasm.stdout)
     inject_end = int(inject_end_search.group(1), 16)
-    print("Initial message end:", hex(inject_end))
+    print(f"Injection range: {hi2(hex(inject_start))}..{hi2(hex(inject_end))}")
 
     is_valid = False
     for i in range(inject_start + 1, inject_end - 1 - len(message)):
-        print(f" Trying message start = {i}...")
+        print(f"  Trying message start @ {hi2(i)}...")
         candidate_hlit = hlit
         candidate_hdist = 0  # We don't use distance codes
 
@@ -143,9 +163,9 @@ def patch_codes(
                     "bits": match.group(2),
                     "sym_len": int(match.group(4), 10),
                 }
-        print(code_bits)
-        print(dist_1_bits)
-        print(sym_256_data)
+        print("  code_bits:", hibold(code_bits))
+        print("  dist_1_bits:", hibold(dist_1_bits))
+        print("  sym_256_data:", hibold(sym_256_data))
 
         exclusions = {}
         litlen_counts = {}
@@ -167,7 +187,8 @@ def patch_codes(
 
         if 0 not in exclusions:
             exclusions[0] = 0
-        print(exclusions, litlen_counts)
+        print("  exclusions:", hibold(exclusions))
+        print("  litlen_counts:", hibold(litlen_counts))
         new_counts = solve(litlen_counts, exclusions, max_count)
         need_counts = {}
         for k, v in new_counts.items():
@@ -178,23 +199,24 @@ def patch_codes(
                     need_counts[k] = v - litlen_counts[k]
             elif v > 0:
                 need_counts[k] = v
-        print("Need to add codes:", need_counts)
+        print("Need to add codes:", hibold(need_counts))
 
         # Add codes
-        print(next_byte_i, next_bit_i)
+        print(f"  offset: {hi2(next_byte_i)} {hi1(next_bit_i)}")
 
         free_len = 8 - next_bit_i + len(dist_1_bits)
-        print(f"free_len: {free_len}")
+        print(f"  free_len: {hibold(free_len)}")
         assert free_len <= 8  # FIXME: Need to decrement byte_i
 
         new_bits = new_bits[: ((next_byte_i) * 8)]
-        print(new_bits)
+        print(f"  bits: {hi1(new_bits)}")
 
         last_octet = new_bits[-8:][free_len:]
         new_bits = new_bits[:-8]
         next_bits = bitsturi.add(code_bits, need_counts, last_octet)
         new_bits = new_bits + next_bits
-        print(f"last_octet: {last_octet}, next_bits: {next_bits}")
+        print(f"  last_octet: {hi1(last_octet)}")
+        print(f"  next_bits: {hi1(next_bits)}")
 
         added_counts = 0
         for k, v in need_counts.items():
@@ -248,10 +270,10 @@ def add_eob_symbol(
 
     next_byte_i = int(missing_data.group(1), 16)
     next_bit_i = int(missing_data.group(2), 10)
-    print(next_byte_i, next_bit_i)
+    print(f"  offset: {hi2(next_byte_i)} {hi1(next_bit_i)}")
 
     free_len = 8 - next_bit_i
-    print(f"free_len: {free_len}")
+    print(f"  free_len: {hibold(free_len)}")
     assert free_len <= 8  # FIXME: Need to decrement byte_i
 
     # FIXME: When huffman tables are implemented, we don't need to brute symbol 256 bits
@@ -299,10 +321,10 @@ def add_block_to_stream(new_bits: str, base_bits: str, decoded_sym_256: Any) -> 
 
     next_byte_i = int(decoded_sym_256.group(1), 16)
     next_bit_i = int(decoded_sym_256.group(2), 10)
-    print(next_byte_i, next_bit_i)
+    print(f"  offset: {hi2(next_byte_i)} {hi1(next_bit_i)}")
 
     free_len = 8 - next_bit_i
-    print(f"free_len: {free_len}")
+    print(f"  free_len: {hibold(free_len)}")
     assert free_len <= 8  # FIXME: Need to decrement byte_i
 
     last_octet = new_bits[-8:][free_len:]
@@ -313,13 +335,15 @@ def add_block_to_stream(new_bits: str, base_bits: str, decoded_sym_256: Any) -> 
 
 
 def parse_block_header(base_bits: str) -> Tuple[int, int]:
+    print("Parsing block header...")
+
     base_chunks = bitsturi.chunks(base_bits, 8)
     next_byte_i = 0
     buf = ""
 
-    bfinal, next_byte_i, buf = bitsturi.extract(base_chunks, 1, next_byte_i, buf)
-    vbfinal = int(bfinal, 2)
-    print(f"BFINAL {bfinal} = {vbfinal}")
+    bfinal_bits, next_byte_i, buf = bitsturi.extract(base_chunks, 1, next_byte_i, buf)
+    bfinal = int(bfinal_bits, 2)
+    print(f"  BFINAL {hi1(bfinal_bits):<18} = {hibold(bfinal)}")
 
     btype, next_byte_i, buf = bitsturi.extract(base_chunks, 2, next_byte_i, buf)
     vbtype = int(btype, 2)
@@ -327,24 +351,26 @@ def parse_block_header(base_bits: str) -> Tuple[int, int]:
         raise RuntimeError(
             "Not a dynamic huffman table (expected BTYPE=0b10, got 0b{btype})."
         )
-    print(f" BTYPE {btype} = {vbtype}")
+    print(f"  BTYPE  {hi1(btype):<18} = {hibold(vbtype)}")
 
     hlit_bits, next_byte_i, buf = bitsturi.extract(base_chunks, 5, next_byte_i, buf)
     hlit = int(hlit_bits, 2)
-    print(f"  HLIT {hlit_bits} = {hlit} (k + 257 = {hlit + 257})")
+    print(f"  HLIT   {hi1(hlit_bits):<18} = {hibold(hlit)} (k + 257 = {hlit + 257})")
 
     hdist_bits, next_byte_i, buf = bitsturi.extract(base_chunks, 5, next_byte_i, buf)
     hdist = int(hdist_bits, 2)
-    print(f" HDIST {hdist_bits} = {hdist} (k + 1 = {hdist + 1})")
+    print(f"  HDIST  {hi1(hdist_bits):<18} = {hibold(hdist)} (k + 1 = {hdist + 1})")
 
     hclen_bits, next_byte_i, buf = bitsturi.extract(base_chunks, 4, next_byte_i, buf)
     hclen = int(hclen_bits, 2)
-    print(f" HCLEN {hclen_bits} = {hclen} (k + 4 = {hclen + 4})")
+    print(f"  HCLEN  {hi1(hclen_bits):<18} = {hibold(hclen)} (k + 4 = {hclen + 4})")
 
     return hlit, hdist
 
 
 if __name__ == "__main__":
+    colorama.init()
+
     compressed_file = sys.argv[1]
     if not compressed_file:
         raise RuntimeError("No filename passed?")
